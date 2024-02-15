@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "docker-db-dump"
+name = "docker-dbdump"
 version = "0.1.0"
 description = ""
 authors = ["kmille <github@androidloves.me>"]
@@ -12,8 +12,37 @@ docker = "^7.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pdbpp = "^0.10.3"
-stdeb = "^0.10.0"
+mypy = "^1.8.0"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+docker-dbdump = "docker_dbdump.__init__:main"
+
+[tool.mypy]
+files = "docker_dbdump/*.py"
+strict_optional = false
+local_partial_types = true
+show_error_codes = true
+show_error_context = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+module = [
+    "docker"
+]
+ignore_missing_imports = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_untyped_defs = true
+follow_imports = "normal"
+no_implicit_reexport = true
+strict_equality = true
+strict_optional = true
+warn_return_any = true
+warn_unused_ignores = true
+

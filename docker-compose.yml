@@ -1,10 +1,8 @@
 services:
     maria-db:
         image: mariadb:11.2.2
-        container_name: icinga-db
         restart: unless-stopped
         environment:
-            TZ: Europe/Berlin
             MARIADB_USER: icinga
             MARIADB_DATABASE: icinga
             MARIADB_PASSWORD: 4895348957
@@ -19,3 +17,9 @@ services:
         restart: unless-stopped
         environment:
             POSTGRES_PASSWORD: example
+    postgis-db:
+        image: postgis/postgis
+        restart: unless-stopped
+        environment:
+            POSTGRES_USER: test-user
+            POSTGRES_PASSWORD: mypassword
