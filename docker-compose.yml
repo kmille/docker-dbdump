@@ -1,0 +1,21 @@
+services:
+    maria-db:
+        image: mariadb:11.2.2
+        container_name: icinga-db
+        restart: unless-stopped
+        environment:
+            TZ: Europe/Berlin
+            MARIADB_USER: icinga
+            MARIADB_DATABASE: icinga
+            MARIADB_PASSWORD: 4895348957
+            MARIADB_ROOT_PASSWORD: 489548974
+    mysql-db:
+        image: mysql
+        restart: unless-stopped
+        environment:
+            MYSQL_ROOT_PASSWORD: secret_password
+    postgres-db:
+        image: postgres
+        restart: unless-stopped
+        environment:
+            POSTGRES_PASSWORD: example
