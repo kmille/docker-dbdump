@@ -18,6 +18,7 @@ logging.basicConfig(format=FORMAT, level=logging.INFO)
 
 ERROR = False
 EXIT_CODE_FAILURE = 1
+MYSQL_MARIADB_ARGUMENTS = "--single-transaction --skip-lock-tables --all-databases"
 
 
 def fail(e: Exception | str) -> NoReturn:
@@ -155,11 +156,10 @@ class DBContainer:
         return self.container.exec_run(cmd, user="postgres", stream=True)
 
     def _backup_maria_mysql(self, out_file: Path) -> docker.models.containers.ExecResult:
-        # TODO: add --no-tablespaces ?
         if self.db_type == DBType.MARIADB:
-            cmd = f'mariadb-dump -u {self.username} --no-tablespaces --all-databases --system=all'
+            cmd = f"mariadb-dump -u {self.username} {MYSQL_MARIADB_ARGUMENTS}"
         elif self.db_type == DBType.MYSQL:
-            cmd = f"mysqldump -u {self.username} --single-transaction --skip-lock-tables --all-databases"
+            cmd = f"mysqldump -u {self.username} {MYSQL_MARIADB_ARGUMENTS}"
         logging.debug(f"Running: '{cmd}'")
         return self.container.exec_run(cmd, environment={"MYSQL_PWD": self.password}, stream=True)
 
