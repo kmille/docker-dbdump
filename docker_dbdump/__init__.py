@@ -157,7 +157,7 @@ class DBContainer:
     def _backup_maria_mysql(self, out_file: Path) -> docker.models.containers.ExecResult:
         # TODO: add --no-tablespaces ?
         if self.db_type == DBType.MARIADB:
-            cmd = f'mariadb-dump -u {self.username} -p"{self.password}" --no-tablespaces --all-databases --system=all'
+            cmd = f'mariadb-dump -u {self.username} --no-tablespaces --all-databases --system=all'
         elif self.db_type == DBType.MYSQL:
             cmd = f"mysqldump -u {self.username} --single-transaction --skip-lock-tables --all-databases"
         logging.debug(f"Running: '{cmd}'")
