@@ -251,14 +251,10 @@ def main() -> None:
                 logging.error(f"Could not find a running container with name {container_name}")
                 global ERROR
                 ERROR = True
-    elif args.all:
+    elif args.all or args.ignore_container:
         containers = client.containers.list(filters={'status': "running"})
         for container in containers:
-            do_backup(container, args.backup_dir)
-    elif args.ignore_container:
-        containers = client.containers.list(filters={'status': "running"})
-        for container in containers:
-            if container.name in args.ignore_container:
+            if args.ignore_container and container.name in args.ignore_container:
                 logging.info(f"Ignoring container '{container.name}'")
             else:
                 do_backup(container, args.backup_dir)
