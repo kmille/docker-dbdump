@@ -1,4 +1,5 @@
 TODOs
-- docs
+- add --version
 - publish on PyPi
-- AUR
+- AUR package
+- add tests (Create one or two databases)

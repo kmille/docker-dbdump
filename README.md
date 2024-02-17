@@ -1,12 +1,17 @@
-# docker-dbdump.y
+# docker-dbdump - database backup for docker
 
-This tool makes a backup of databases, which run in Docker containers
+This tool makes backups of databases, which run in Docker containers. Please create an issue if you run into problems.
 
 ## How does it work?
 1) Iterate over all running Docker containers
 2) Check if it's a database container (MySQL, MariaDB, PostgreSQL, PostgriSQL)
 3) If so, run mysqldump or the equivalent
 4) Use `-v`/`--verbose`, it's helpful
+
+## Features
+- Creates [rsyncable](https://beeznest.wordpress.com/2005/02/03/rsyncable-gzip/) zip files
+- Backup all database containers, a few specified ones or all contains with some exceptinons
+- Creates a state file (useful for monitoring)
 
 ## dev environment
 ```bash
@@ -31,10 +36,6 @@ options:
                         backup all running db containers except the ones specified (can be used multiple times)
   -s, --update-state-file
                         update state file (/var/log/docker-dbdump.done) with current date if everything succeeds
-kmille@linbox:docker-dbdump
-
-
-
 ```
 
 ## Example run
