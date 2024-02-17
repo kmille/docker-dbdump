@@ -53,6 +53,7 @@ class DBContainer:
     password: str | None
     db_type: DBType
     docker_compose_base: str
+    is_supported = bool
 
     def __init__(self, container: docker.models.containers.Container) -> None:
         self.container = container
@@ -83,7 +84,7 @@ class DBContainer:
         try:
             self.docker_compose_base = self.container.attrs['Config']['Labels']['com.docker.compose.project.working_dir'].replace("/", "_")
         except KeyError:
-            logging.warning(f"Could not get working_dir of container {self.name}. Using {self.name}")
+            logging.warning(f"Could not get docker compose working directory. Using {self.name}")
             self.docker_compose_base = self.name
 
     def _get_container_envs(self) -> dict[str, str]:
@@ -139,6 +140,8 @@ class DBContainer:
         out_file.chmod(0o600)
 
     def _check_backup(self, out_file: Path) -> None:
+        """We run `exec_run` with `stream=True`. Then we dont have a return
+           value to check if the dump was sucessfull."""
         with out_file.open("rb") as f:
             content = f.read(300).decode()
         if self.db_type in (DBType.MYSQL, DBType.MARIADB):
