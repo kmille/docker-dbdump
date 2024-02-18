@@ -139,7 +139,7 @@ class DBContainer:
             for data in exec_output.output:
                 f.write(data)
         out_file.chmod(0o600)
-        logging.debug("Wrote sql dump to {out_file}")
+        logging.debug(f"Wrote sql dump to {out_file}")
 
     def _check_backup(self, out_file: Path) -> None:
         """We run `exec_run` with `stream=True`. Then we dont have a return
