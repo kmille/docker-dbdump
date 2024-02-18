@@ -224,6 +224,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("-s", "--update-state-file",
                         action="store_true",
                         help=f"update state file ({state_file}) with current date if everything succeeds")
+    parser.add_argument("--version",
+                        action="store_true",
+                        help="print version and exit")
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -243,7 +246,11 @@ def main() -> None:
     logging.debug(f"Dumping backups to {args.backup_dir}")
     args.backup_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
 
-    if args.list:
+    if args.version:
+        from importlib.metadata import version
+        print("docker-dbdump v" + version("docker_dbdump"))
+        sys.exit(0)
+    elif args.list:
         print_running_containers(args.list)
     elif args.backup:
         for container_name in args.backup:
