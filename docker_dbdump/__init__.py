@@ -17,7 +17,7 @@ FORMAT = "[%(asctime)s %(levelname)s] %(message)s"
 logging.basicConfig(format=FORMAT, level=logging.INFO)
 
 ERROR = False
-EXIT_CODE_FAILURE = 1
+EXIT_CODE_FAILURE = 0
 MYSQL_MARIADB_ARGUMENTS = "--single-transaction --skip-lock-tables --all-databases"
 
 
@@ -224,6 +224,10 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("-s", "--update-state-file",
                         action="store_true",
                         help=f"update state file ({state_file}) with current date if everything succeeds")
+    parser.add_argument("--fail",
+                        action="store_true",
+                        help="if --fail is specified, the script will return with exit code 1 if an error occurs. "
+                             "If not specified, the exit code is always 0")
     parser.add_argument("--version",
                         action="store_true",
                         help="print version and exit")
@@ -250,7 +254,13 @@ def main() -> None:
         from importlib.metadata import version
         print("docker-dbdump v" + version("docker_dbdump"))
         sys.exit(0)
-    elif args.list:
+
+    if args.fail:
+        global EXIT_CODE_FAILURE
+        logging.debug("Setting exit code in case of an error to 1")
+        EXIT_CODE_FAILURE = 1
+
+    if args.list:
         print_running_containers(args.list)
     elif args.backup:
         for container_name in args.backup:
