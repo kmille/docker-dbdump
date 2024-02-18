@@ -59,8 +59,9 @@ class DBContainer:
         self.container = container
         self.name = container.name
         self._set_container_type()
-        self._set_docker_compose_directory()
-        self._parse_envs()
+        if self.is_supported:
+            self._set_docker_compose_directory()
+            self._parse_envs()
 
     def type(self) -> str:
         return self.db_type.name.lower()
@@ -115,7 +116,7 @@ class DBContainer:
                 self.password = env.get("MARIADB_ROOT_PASSWORD", self.password)
 
             if not all([self.username, self.password]):
-                raise BackupError(f"Could not find username/password in env:\n{env}")
+                raise BackupError(f"Could not find username/password in env for container {self.name}:\n{env}")
 
     def backup(self, out_dir: Path) -> None:
         filename = self.docker_compose_base + "_" + self.name + f"_{self.username}_{self.type()}.sql"
@@ -138,6 +139,7 @@ class DBContainer:
             for data in exec_output.output:
                 f.write(data)
         out_file.chmod(0o600)
+        logging.debug("Wrote sql dump to {out_file}")
 
     def _check_backup(self, out_file: Path) -> None:
         """We run `exec_run` with `stream=True`. Then we dont have a return
@@ -171,7 +173,7 @@ class DBContainer:
             subprocess.run(["gzip", "-f", "--rsyncable", out_file.as_posix()], check=True, capture_output=True)
             logging.debug("Sucessfully zipped backup")
         except subprocess.CalledProcessError as e:
-            raise BackupError(f"Could not zip file: {e.stderr.decode()}") from e
+            raise BackupError(f"Could not zip file: {e.stderr.decode().strip()}") from e
 
 
 def do_backup(container: docker.models.containers.Container, backup_dir: Path) -> None:
@@ -179,7 +181,7 @@ def do_backup(container: docker.models.containers.Container, backup_dir: Path) -
         dbc = DBContainer(container)
         if not dbc.is_supported:
             tags = ", ".join(container.image.tags)
-            logging.debug(f"Skipping container {dbc.name} (not supported (tags: {tags}))")
+            logging.debug(f"Skipping container {dbc.name}. Image not supported: {tags}")
             return
         dbc.backup(backup_dir)
     except Exception as e:
@@ -191,7 +193,8 @@ def do_backup(container: docker.models.containers.Container, backup_dir: Path) -
 def print_running_containers(grep: str) -> NoReturn:
     containers = client.containers.list(filters={'status': "running"})
     for container in containers:
-        if grep != "*" and grep not in container.name:
+        filter_container = grep != "*"
+        if filter_container and grep not in container.name:
             continue
         docker_compose_base = container.attrs['Config']['Labels'].get('com.docker.compose.project.working_dir', "not run by docker-compose")
         tags = ", ".join(container.image.tags)
