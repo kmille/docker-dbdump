@@ -183,11 +183,11 @@ class DBContainer:
 def do_backup(container: docker.models.containers.Container, backup_dir: Path) -> None:
     try:
         dbc = DBContainer(container)
-        if not dbc.is_supported:
+        if dbc.is_supported:
+            dbc.backup(backup_dir)
+        else:
             tags = ", ".join(container.image.tags)
             logging.debug(f"Skipping container {dbc.name}. Image not supported: {tags}")
-            return
-        dbc.backup(backup_dir)
     except Exception as e:
         logging.error(f"An exception occured during the backup of '{container.name}'")
         logging.exception(e)
