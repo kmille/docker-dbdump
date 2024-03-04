@@ -188,6 +188,8 @@ def do_backup(container: docker.models.containers.Container, backup_dir: Path) -
         else:
             tags = ", ".join(container.image.tags)
             logging.debug(f"Skipping container {dbc.name}. Image not supported: {tags}")
+    except KeyboardInterrupt:
+        fail("Exiting...")
     except Exception as e:
         logging.error(f"An exception occured during the backup of '{container.name}'")
         logging.exception(e)
