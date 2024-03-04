@@ -185,7 +185,8 @@ def do_backup(container: docker.models.containers.Container, backup_dir: Path) -
             return
         dbc.backup(backup_dir)
     except Exception as e:
-        logging.error(e)
+        logging.error(f"An exception occured during the backup of '{container.name}'")
+        logging.exception(e)
         global ERROR
         ERROR = True
 
