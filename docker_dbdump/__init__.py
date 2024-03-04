@@ -137,7 +137,11 @@ class DBContainer:
     def _dump_to_file(self, exec_output: docker.models.containers.ExecResult, out_file: Path) -> None:
         with out_file.open("wb") as f:
             for data in exec_output.output:
-                f.write(data)
+                stdout, stderr = data
+                if stderr:
+                    logging.warning(stderr.decode().strip())
+                if stdout:
+                    f.write(stdout)
         out_file.chmod(0o600)
         logging.debug(f"Wrote sql dump to {out_file}")
 
@@ -158,7 +162,7 @@ class DBContainer:
     def _backup_postgres(self, out_file: Path) -> docker.models.containers.ExecResult:
         cmd = f"pg_dumpall --username {self.username}"
         logging.debug(f"Running: '{cmd}'")
-        return self.container.exec_run(cmd, user="postgres", stream=True)
+        return self.container.exec_run(cmd, user="postgres", stream=True, demux=True)
 
     def _backup_maria_mysql(self, out_file: Path) -> docker.models.containers.ExecResult:
         if self.db_type == DBType.MARIADB:
@@ -166,7 +170,7 @@ class DBContainer:
         elif self.db_type == DBType.MYSQL:
             cmd = f"mysqldump -u {self.username} {MYSQL_MARIADB_ARGUMENTS}"
         logging.debug(f"Running: '{cmd}'")
-        return self.container.exec_run(cmd, environment={"MYSQL_PWD": self.password}, stream=True)
+        return self.container.exec_run(cmd, environment={"MYSQL_PWD": self.password}, stream=True, demux=True)
 
     def _zip_backup(self, out_file: Path) -> None:
         try:
