@@ -3,15 +3,18 @@ services:
         image: mariadb:11.2.2
         restart: unless-stopped
         environment:
-            MARIADB_USER: icinga
-            MARIADB_DATABASE: icinga
-            MARIADB_PASSWORD: 4895348957
-            MARIADB_ROOT_PASSWORD: 489548974
+            MARIADB_USER: mariadb-user
+            MARIADB_DATABASE: sample
+            MARIADB_PASSWORD: mariadb-password
+            MARIADB_ROOT_PASSWORD: mariadb-root-password
     mysql-db:
         image: mysql
         restart: unless-stopped
         environment:
-            MYSQL_ROOT_PASSWORD: secret_password
+            MYSQL_USER: mysql-user
+            MYSQL_PASSWORD: mysql-password
+            MYSQL_DATABASE: sample
+            MYSQL_ROOT_PASSWORD: mysql-root-password
     postgres-db:
         image: postgres
         restart: unless-stopped
