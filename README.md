@@ -10,7 +10,7 @@ This tool makes backups of databases, which run in Docker containers. Please cre
 
 ## Features
 - Creates [rsyncable](https://beeznest.wordpress.com/2005/02/03/rsyncable-gzip/) zip files
-- Backup all database containers, a few specified ones or all contains with some exceptinons
+- Back up all database containers, a few specified ones or all containers with some exceptions
 - Creates a state file (useful for monitoring)
 
 ## dev environment

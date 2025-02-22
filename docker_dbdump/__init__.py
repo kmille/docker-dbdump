@@ -131,8 +131,8 @@ class DBContainer:
         self._dump_to_file(exec_output, out_file)
         self._check_backup(out_file)
         self._zip_backup(out_file)
-        logging.debug(f"Sucessfully wrote backup to {out_file}.gz")
-        logging.info(f"Done backuping container {self.name} ({self.type()})")
+        logging.debug(f"Successfully wrote backup to {out_file}.gz")
+        logging.info(f"Done backing up container {self.name} ({self.type()})")
 
     def _dump_to_file(self, exec_output: docker.models.containers.ExecResult, out_file: Path) -> None:
         with out_file.open("wb") as f:
@@ -146,8 +146,8 @@ class DBContainer:
         logging.debug(f"Wrote sql dump to {out_file}")
 
     def _check_backup(self, out_file: Path) -> None:
-        """We run `exec_run` with `stream=True`. Then we dont have a return
-           value to check if the dump was sucessfull."""
+        """We run `exec_run` with `stream=True`. Then we don’t have a return
+           value to check if the dump was successful."""
         with out_file.open("rb") as f:
             content = f.read(300).decode()
         if self.db_type in (DBType.MYSQL, DBType.MARIADB):
@@ -175,7 +175,7 @@ class DBContainer:
     def _zip_backup(self, out_file: Path) -> None:
         try:
             subprocess.run(["gzip", "-f", "--rsyncable", out_file.as_posix()], check=True, capture_output=True)
-            logging.debug("Sucessfully zipped backup")
+            logging.debug("Successfully zipped backup")
         except subprocess.CalledProcessError as e:
             raise BackupError(f"Could not zip file: {e.stderr.decode().strip()}") from e
 
@@ -191,7 +191,7 @@ def do_backup(container: docker.models.containers.Container, backup_dir: Path) -
     except KeyboardInterrupt:
         fail("Exiting...")
     except Exception as e:
-        logging.error(f"An exception occured during the backup of '{container.name}'")
+        logging.error(f"An exception occurred during the backup of '{container.name}'")
         logging.exception(e)
         global ERROR
         ERROR = True
