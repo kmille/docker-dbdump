@@ -1,28 +1,46 @@
 services:
-    maria-db:
-        image: mariadb:11.2.2
-        restart: unless-stopped
-        environment:
-            MARIADB_USER: mariadb-user
-            MARIADB_DATABASE: sample
-            MARIADB_PASSWORD: mariadb-password
-            MARIADB_ROOT_PASSWORD: mariadb-root-password
-    mysql-db:
-        image: mysql
-        restart: unless-stopped
-        environment:
-            MYSQL_USER: mysql-user
-            MYSQL_PASSWORD: mysql-password
-            MYSQL_DATABASE: sample
-            MYSQL_ROOT_PASSWORD: mysql-root-password
-    postgres-db:
-        image: postgres
-        restart: unless-stopped
-        environment:
-            POSTGRES_PASSWORD: example
-    postgis-db:
-        image: postgis/postgis
-        restart: unless-stopped
-        environment:
-            POSTGRES_USER: test-user
-            POSTGRES_PASSWORD: mypassword
+  maria-db:
+    image: mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_USER: mariadb-user
+      MARIADB_DATABASE: sample
+      MARIADB_PASSWORD: mariadb-password
+      MARIADB_ROOT_PASSWORD: mariadb-root-password
+
+  mysql-db:
+    image: mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_USER: mysql-user
+      MYSQL_PASSWORD: mysql-password
+      MYSQL_DATABASE: sample
+      MYSQL_ROOT_PASSWORD: mysql-root-password
+
+  postgres-db:
+    image: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: example
+
+  postgis-db:
+    image: postgis/postgis
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: test-user
+      POSTGRES_PASSWORD: mypassword
+
+  docker-dbdump:
+    image: ghcr.io/kmille/docker-dbdump:latest
+    restart: no
+    depends_on:
+      - maria-db
+      - mysql-db
+      - postgres-db
+      - postgis-db
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/backups
+    # command: "docker-dbdump --all --verbose"
+    # depends_on is not enough. We need to sleep a bit
+    command: "bash -c 'sleep 60 && docker-dbdump --all --verbose'"
