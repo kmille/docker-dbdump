@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-from datetime import datetime
+import argparse
+import logging
 import os
 import sys
-import logging
+from datetime import datetime
 from pathlib import Path
-import argparse
-import docker  # needs: yum install python-docker or pip install docker
-import subprocess
-
 from typing import NoReturn
-from enum import Enum
+
+import docker  # needs: yum install python-docker or pip install docker
+
+from docker_dbdump.backup import DBContainer
 
 state_file = Path("/var/log/docker-dbdump.done")
 
@@ -18,7 +18,6 @@ logging.basicConfig(format=FORMAT, level=logging.INFO)
 
 ERROR = False
 EXIT_CODE_FAILURE = 0
-MYSQL_MARIADB_ARGUMENTS = "--single-transaction --skip-lock-tables --all-databases"
 
 
 def fail(e: Exception | str) -> NoReturn:
@@ -32,215 +31,71 @@ if os.geteuid() != 0:
 try:
     client = docker.from_env()
 except docker.errors.DockerException as e:
-    fail(e)
+    fail(f"Could not access Docker socket. {e}")
 
 
-class DBType(Enum):
-    NOT_SUPPORTED = -1
-    MYSQL = 1
-    MARIADB = 2
-    POSTGRES = 3
-
-
-class BackupError(Exception):
-    pass
-
-
-class DBContainer:
-    container: docker.models.containers.Container
-    name: str
-    username: str | None
-    password: str | None
-    db_type: DBType
-    docker_compose_base: str
-    is_supported = bool
-
-    def __init__(self, container: docker.models.containers.Container) -> None:
-        self.container = container
-        self.name = container.name
-        self._set_container_type()
-        if self.is_supported:
-            self._set_docker_compose_directory()
-            self._parse_envs()
-
-    def type(self) -> str:
-        return self.db_type.name.lower()
-
-    def _set_container_type(self) -> None:
-        image_tags = " ".join(self.container.image.tags).lower()
-        db_type = DBType.NOT_SUPPORTED
-
-        if "mysql" in image_tags:
-            db_type = DBType.MYSQL
-        if "mariadb" in image_tags:
-            db_type = DBType.MARIADB
-        if "postgres" in image_tags:
-            db_type = DBType.POSTGRES
-        if "postgis" in image_tags:
-            db_type = DBType.POSTGRES
-        self.db_type = db_type
-        self.is_supported = (db_type != DBType.NOT_SUPPORTED)
-
-    def _set_docker_compose_directory(self) -> None:
-        try:
-            self.docker_compose_base = self.container.attrs['Config']['Labels']['com.docker.compose.project.working_dir'].replace("/", "_")
-        except KeyError:
-            logging.warning(f"Could not get docker compose working directory. Using {self.name}")
-            self.docker_compose_base = self.name
-
-    def _get_container_envs(self) -> dict[str, str]:
-        env_list = self.container.attrs["Config"]["Env"]
-        env_dict = {}
-        for env in env_list:
-            key, value = env.split("=", 1)
-            env_dict[key] = value
-        return env_dict
-
-    def _parse_envs(self) -> None:
-        self.username = None
-        self.password = None
-        env = self._get_container_envs()
-
-        if self.db_type == DBType.POSTGRES:
-            self.username = env.get("POSTGRES_USER", "postgres")
-        else:
-            if "MYSQL_USER" in env or "MARIADB_USER" in env:
-                self.username = env.get("MYSQL_USER", self.username)
-                self.username = env.get("MARIADB_USER", self.username)
-                self.password = env.get("MYSQL_PASSWORD", self.password)
-                self.password = env.get("MARIADB_PASSWORD", self.password)
-
-            if "MYSQL_ROOT_PASSWORD" in env or "MARIADB_ROOT_PASSWORD" in env:
-                self.username = "root"
-                self.password = env.get("MYSQL_ROOT_PASSWORD", self.password)
-                self.password = env.get("MARIADB_ROOT_PASSWORD", self.password)
-
-            if not all([self.username, self.password]):
-                raise BackupError(f"Could not find username/password in env for container {self.name}:\n{env}")
-
-    def backup(self, out_dir: Path) -> None:
-        filename = self.docker_compose_base + "_" + self.name + f"_{self.username}_{self.type()}.sql"
-        out_file = out_dir / filename
-        logging.info(f"Starting to backup container {self.name} ({self.type()})")
-
-        if self.db_type in (DBType.MARIADB, DBType.MYSQL):
-            exec_output = self._backup_maria_mysql(out_file)
-        elif self.db_type == DBType.POSTGRES:
-            exec_output = self._backup_postgres(out_file)
-
-        self._dump_to_file(exec_output, out_file)
-        self._check_backup(out_file)
-        self._zip_backup(out_file)
-        logging.debug(f"Successfully wrote backup to {out_file}.gz")
-        logging.info(f"Done backing up container {self.name} ({self.type()})")
-
-    def _dump_to_file(self, exec_output: docker.models.containers.ExecResult, out_file: Path) -> None:
-        with out_file.open("wb") as f:
-            for data in exec_output.output:
-                stdout, stderr = data
-                if stderr:
-                    logging.warning(stderr.decode().strip())
-                if stdout:
-                    f.write(stdout)
-        out_file.chmod(0o600)
-        logging.debug(f"Wrote sql dump to {out_file}")
-
-    def _check_backup(self, out_file: Path) -> None:
-        """We run `exec_run` with `stream=True`. Then we don’t have a return
-           value to check if the dump was successful."""
-        with out_file.open("rb") as f:
-            content = f.read(300).decode()
-        if self.db_type in (DBType.MYSQL, DBType.MARIADB):
-            if not content.lower().startswith(f"-- {self.type()} dump") and \
-                    "Host: localhost" not in content:
-                raise BackupError(f"Could not create dump for container {self.name}:\n{content.strip()}")
-        elif self.db_type == DBType.POSTGRES:
-            if "PostgreSQL database cluster dump" not in content:
-                raise BackupError(f"Could not create dump for container {self.name}:\n{content.strip()}")
-        logging.debug("Created backup looks good")
-
-    def _backup_postgres(self, out_file: Path) -> docker.models.containers.ExecResult:
-        cmd = f"pg_dumpall --username {self.username}"
-        logging.debug(f"Running: '{cmd}'")
-        return self.container.exec_run(cmd, user="postgres", stream=True, demux=True)
-
-    def _backup_maria_mysql(self, out_file: Path) -> docker.models.containers.ExecResult:
-        if self.db_type == DBType.MARIADB:
-            cmd = f"mariadb-dump -u {self.username} {MYSQL_MARIADB_ARGUMENTS}"
-        elif self.db_type == DBType.MYSQL:
-            cmd = f"mysqldump -u {self.username} {MYSQL_MARIADB_ARGUMENTS}"
-        logging.debug(f"Running: '{cmd}'")
-        return self.container.exec_run(cmd, environment={"MYSQL_PWD": self.password}, stream=True, demux=True)
-
-    def _zip_backup(self, out_file: Path) -> None:
-        try:
-            subprocess.run(["gzip", "-f", "--rsyncable", out_file.as_posix()], check=True, capture_output=True)
-            logging.debug("Successfully zipped backup")
-        except subprocess.CalledProcessError as e:
-            raise BackupError(f"Could not zip file: {e.stderr.decode().strip()}") from e
-
-
-def do_backup(container: docker.models.containers.Container, backup_dir: Path) -> None:
+def do_backup(container: docker.models.containers.Container, backup_dir: Path, skip_gzip: bool) -> None:
     try:
         dbc = DBContainer(container)
         if dbc.is_supported:
-            dbc.backup(backup_dir)
+            dbc.backup(backup_dir, not skip_gzip)
         else:
             tags = ", ".join(container.image.tags)
             logging.debug(f"Skipping container {dbc.name}. Image not supported: {tags}")
     except KeyboardInterrupt:
         fail("Exiting...")
     except Exception as e:
-        logging.error(f"An exception occurred during the backup of '{container.name}'")
+        logging.error(f"An exception occured during the backup of '{container.name}'")
         logging.exception(e)
+        # don't let it fail. Backup all others containers instead. Fail with exit code 1 in the end
         global ERROR
         ERROR = True
 
 
 def print_running_containers(grep: str) -> NoReturn:
-    containers = client.containers.list(filters={'status': "running"})
+    # if grep is '*' show all containers (coming from argparse)
+    containers = client.containers.list(filters={"status": "running"})
     for container in containers:
         filter_container = grep != "*"
-        if filter_container and grep not in container.name:
+        if filter_container and grep.lower() not in container.name.lower():
             continue
-        docker_compose_base = container.attrs['Config']['Labels'].get('com.docker.compose.project.working_dir', "not run by docker-compose")
+        docker_compose_base = container.attrs["Config"]["Labels"].get(
+            "com.docker.compose.project.working_dir", "not run by docker-compose"
+        )
         tags = ", ".join(container.image.tags)
-        print(f"{container.name:<30} {tags:<30} {docker_compose_base}")
+        print(f"{container.name:<40} {tags:<40} {docker_compose_base}")
     sys.exit(0)
 
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser("")
-    parser.add_argument("-v", "--verbose",
-                        action="store_true",
-                        help="print verbose output")
-    parser.add_argument("--backup-dir",
-                        default="/backups",
-                        type=Path,
-                        help="output directory for backups")
-    parser.add_argument("-l", "--list",
-                        nargs="?",
-                        const="*",
-                        help="show running docker containers. Add argument to grep")
-    parser.add_argument("-a", "--all",
-                        action="store_true",
-                        help="backup all running db containers")
-    parser.add_argument("-b", "--backup",
-                        nargs="+",
-                        help="only backup specific containers")
-    parser.add_argument("-i", "--ignore-container",
-                        help="backup all running db containers except the ones specified (can be used multiple times)",
-                        nargs="+")
-    parser.add_argument("-s", "--update-state-file",
-                        action="store_true",
-                        help=f"update state file ({state_file}) with current date if everything succeeds")
-    parser.add_argument("--fail",
-                        action="store_true",
-                        help="if --fail is specified, the script will return with exit code 1 if an error occurs. "
-                             "If not specified, the exit code is always 0")
-    parser.add_argument("--version",
-                        action="store_true",
-                        help="print version and exit")
+    parser.add_argument("-v", "--verbose", action="store_true", help="print verbose output. Warning! This logs database passwords!")
+    parser.add_argument("--backup-dir", default="/backups", type=Path, help="output directory for backups")
+    parser.add_argument(
+        "-l", "--list", nargs="?", const="*", help="show running docker containers. Add argument to grep"
+    )
+    parser.add_argument("-a", "--all", action="store_true", help="backup all running db containers")
+    parser.add_argument("-b", "--backup", nargs="+", help="only backup specific containers")
+    parser.add_argument(
+        "-i",
+        "--ignore-container",
+        help="backup all running db containers except the ones specified (can be used multiple times)",
+        nargs="+",
+    )
+    parser.add_argument("--skip-gzip", action="store_true", help="Do not create create rsyncable gzip dump")
+    parser.add_argument(
+        "-s",
+        "--update-state-file",
+        action="store_true",
+        help=f"update state file ({state_file}) with current date if everything succeeds",
+    )
+    parser.add_argument(
+        "--fail",
+        action="store_true",
+        help="if --fail is specified, the script will return with exit code 1 if an error occurs. "
+        "If not specified, the exit code is always 0",
+    )
+    parser.add_argument("--version", action="store_true", help="print version and exit")
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -276,18 +131,18 @@ def main() -> None:
         for container_name in args.backup:
             try:
                 container = client.containers.get(container_name)
-                do_backup(container, args.backup_dir)
+                do_backup(container, args.backup_dir, args.skip_gzip)
             except docker.errors.NotFound:
-                logging.error(f"Could not find a running container with name {container_name}")
+                logging.error(f"Could not find a running container with name '{container_name}'")
                 global ERROR
                 ERROR = True
     elif args.all or args.ignore_container:
-        containers = client.containers.list(filters={'status': "running"})
+        containers = client.containers.list(filters={"status": "running"})
         for container in containers:
             if args.ignore_container and container.name in args.ignore_container:
                 logging.info(f"Ignoring container '{container.name}'")
             else:
-                do_backup(container, args.backup_dir)
+                do_backup(container, args.backup_dir, args.skip_gzip)
 
     if ERROR:
         logging.error(f"There were problems. Exiting with exit code {EXIT_CODE_FAILURE}.")
@@ -300,5 +155,5 @@ def main() -> None:
         sys.exit(0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
