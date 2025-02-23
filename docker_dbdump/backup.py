@@ -115,10 +115,11 @@ class DBContainer:
         fullcmd = ["bash", "-c", cmd]
         try:
             logging.debug(f"Running dump '{cmd}'")
-            subprocess.run(fullcmd, check=True)
+            subprocess.run(fullcmd, check=True, capture_output=True)
             logging.debug("Sucessfully dumped backup")
         except subprocess.CalledProcessError as e:
-            logging.warning(f"Backup cmd returned {e.returncode}: {e.stderr.decode().strip()}")
+            logging.error(f"Backup cmd returned with {e.returncode}: {e.stderr.decode().strip()}")
+            raise e
 
         out_file.chmod(0o600)
         self._check_backup(out_file)
