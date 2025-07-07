@@ -44,12 +44,12 @@ Using docker-compose:
 
 ```yaml
 services: 
- docker-dbdump:
-   image: ghcr.io/kmille/docker-dbdump:latest
-   volumes:
-     - /var/run/docker.sock:/var/run/docker.sock
-     - /backups:/backups
-   command: "docker-dbdump --all --verbose"
+  docker-dbdump:
+    image: ghcr.io/kmille/docker-dbdump:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /backups:/backups
+    command: "docker-dbdump --all --verbose"
 ```
 
 Use `docker-compose -f /opt/container-backups/docker-compose.yml up` in cronjobs.

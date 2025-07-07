@@ -44,3 +44,4 @@ services:
     # command: "docker-dbdump --all --verbose"
     # depends_on is not enough. We need to sleep a bit
     command: "bash -c 'sleep 60 && docker-dbdump --all --verbose'"
+    network_mode: none
