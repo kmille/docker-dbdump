@@ -41,18 +41,17 @@ def do_backup(container: docker.models.containers.Container, backup_dir: Path, s
             dbc.backup(backup_dir, not skip_gzip)
         else:
             tags = ", ".join(container.image.tags)
-            logging.debug(f"Skipping container {dbc.name}. Image not supported: {tags}")
+            logging.debug(f"Skipping container {dbc.name}, image not supported: {tags}")
     except KeyboardInterrupt:
         fail("Exiting...")
     except Exception as e:
-        logging.error(f"An exception occured during the backup of '{container.name}'")
-        logging.exception(e)
+        logging.error(f"An exception occured during the backup of '{container.name}'. {e}")
         # don't let it fail. Backup all others containers instead. Fail with exit code 1 in the end
         global ERROR
         ERROR = True
 
 
-def print_running_containers(grep: str) -> NoReturn:
+def print_running_containers(grep: str) -> None:
     # if grep is '*' show all containers (coming from argparse)
     containers = client.containers.list(filters={"status": "running"})
     for container in containers:
@@ -64,7 +63,6 @@ def print_running_containers(grep: str) -> NoReturn:
         )
         tags = ", ".join(container.image.tags)
         print(f"{container.name:<40} {tags:<40} {docker_compose_base}")
-    sys.exit(0)
 
 
 def parse_arguments() -> argparse.Namespace:
