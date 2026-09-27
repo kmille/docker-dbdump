@@ -7,6 +7,9 @@ services:
       MARIADB_DATABASE: sample
       MARIADB_PASSWORD: mariadb-password
       MARIADB_ROOT_PASSWORD: mariadb-root-password
+    labels:
+      docker-dbdump.username: mariadb-user
+      docker-dbdump.password: mariadb-password
 
   mysql-db:
     image: mysql

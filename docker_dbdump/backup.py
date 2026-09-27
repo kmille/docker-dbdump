@@ -5,6 +5,7 @@ import logging
 
 import docker  # needs: apt install python3-docker or pip install docker
 
+LABEL_PREFIX = "docker-dbdump."
 MYSQL_MARIADB_ARGUMENTS = ["--single-transaction", "--skip-lock-tables", "--all-databases", "--routines", "--events"]
 
 
@@ -27,6 +28,7 @@ class DBContainer:
     db_type: DBType
     docker_compose_base: str
     is_supported: bool
+    labels: dict
 
     def __init__(self, container: docker.models.containers.Container) -> None:
         self.container = container
@@ -34,7 +36,7 @@ class DBContainer:
         self._set_container_type()
         if self.is_supported:
             self._set_docker_compose_directory()
-            self._parse_envs()
+            self.labels = container.attrs["Config"].get("Labels") or {}
 
     def type(self) -> str:
         return self.db_type.name.lower()
@@ -70,11 +72,26 @@ class DBContainer:
             env_dict[key] = value
         return env_dict
 
+    def _apply_label_overrides(self) -> None:
+        username_override = self.labels.get(f"{LABEL_PREFIX}username")
+        password_override = self.labels.get(f"{LABEL_PREFIX}password")
+
+        if username_override:
+            logging.info(f"Overriding username '{username_override}' for {self.name} via label")
+            self.username = username_override
+        if password_override:
+            logging.info(f"Overriding password for {self.name} via label")
+            self.password = password_override
+
     def _parse_envs(self) -> None:
         self.username = None
         self.password = None
-        env = self._get_container_envs()
 
+        if f"{LABEL_PREFIX}username" in self.labels.keys():
+            self._apply_label_overrides()
+            return
+
+        env = self._get_container_envs()
         if self.db_type == DBType.POSTGRES:
             self.username = env.get("POSTGRES_USER", "postgres")
         else:
@@ -90,7 +107,7 @@ class DBContainer:
                 raise BackupError(f"Could not find username/password in env for container {self.name}:\n{env}")
 
     def backup(self, out_dir: Path, compress: bool) -> None:
-
+        self._parse_envs()
         if self.db_type in (DBType.MARIADB, DBType.MYSQL):
             if self.db_type == DBType.MARIADB:
                 backup_cmd = ["mariadb-dump", ]

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "docker-dbdump"
-version = "0.3.0"
+version = "0.3.1a0"
 description = "python script to create docker database backups"
 repository = "https://github.com/kmille/docker-dbdump"
 authors = ["kmille <github@androidloves.me>"]
