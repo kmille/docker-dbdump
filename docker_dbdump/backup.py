@@ -3,9 +3,9 @@ from pathlib import Path
 import subprocess
 import logging
 
-import docker  # needs: yum install python-docker or pip install docker
+import docker  # needs: apt install python3-docker or pip install docker
 
-MYSQL_MARIADB_ARGUMENTS = "--single-transaction --skip-lock-tables --all-databases"
+MYSQL_MARIADB_ARGUMENTS = ["--single-transaction", "--skip-lock-tables", "--all-databases", "--routines", "--events"]
 
 
 class BackupError(Exception):
@@ -41,18 +41,17 @@ class DBContainer:
 
     def _set_container_type(self) -> None:
         image_tags = " ".join(self.container.image.tags).lower()
-        db_type = DBType.NOT_SUPPORTED
+        self.db_type = DBType.NOT_SUPPORTED
 
         if "mysql" in image_tags:
-            db_type = DBType.MYSQL
-        if "mariadb" in image_tags:
-            db_type = DBType.MARIADB
-        if "postgres" in image_tags:
-            db_type = DBType.POSTGRES
-        if "postgis" in image_tags:
-            db_type = DBType.POSTGRES
-        self.db_type = db_type
-        self.is_supported = db_type != DBType.NOT_SUPPORTED
+            self.db_type = DBType.MYSQL
+        elif "mariadb" in image_tags:
+            self.db_type = DBType.MARIADB
+        elif "postgres" in image_tags:
+            self.db_type = DBType.POSTGRES
+        elif "postgis" in image_tags:
+            self.db_type = DBType.POSTGRES
+        self.is_supported = self.db_type != DBType.NOT_SUPPORTED
 
     def _set_docker_compose_directory(self) -> None:
         try:
@@ -80,70 +79,65 @@ class DBContainer:
             self.username = env.get("POSTGRES_USER", "postgres")
         else:
             if "MYSQL_USER" in env or "MARIADB_USER" in env:
-                self.username = env.get("MYSQL_USER", self.username)
-                self.username = env.get("MARIADB_USER", self.username)
-                self.password = env.get("MYSQL_PASSWORD", self.password)
-                self.password = env.get("MARIADB_PASSWORD", self.password)
+                self.username = env.get("MYSQL_USER", env.get("MARIADB_USER", None))
+                self.password = env.get("MYSQL_PASSWORD", env.get("MARIADB_PASSWORD", None))
 
             if "MYSQL_ROOT_PASSWORD" in env or "MARIADB_ROOT_PASSWORD" in env:
                 self.username = "root"
-                self.password = env.get("MYSQL_ROOT_PASSWORD", self.password)
-                self.password = env.get("MARIADB_ROOT_PASSWORD", self.password)
+                self.password = env.get("MYSQL_ROOT_PASSWORD", env.get("MARIADB_ROOT_PASSWORD", None))
 
             if not all([self.username, self.password]):
                 raise BackupError(f"Could not find username/password in env for container {self.name}:\n{env}")
 
-    def backup(self, out_dir: Path, compress) -> None:
-        filename = f"{self.docker_compose_base}_{self.name}" + \
-                   f"_{self.username}_{self.type()}.sql{'.gz' if compress else ''}"
-        out_file = out_dir / filename
-        dockercmd = ""
-        logging.info(f"Starting to backup container {self.name} ({self.type()})")
+    def backup(self, out_dir: Path, compress: bool) -> None:
 
         if self.db_type in (DBType.MARIADB, DBType.MYSQL):
             if self.db_type == DBType.MARIADB:
-                dockercmd = "mariadb-dump"
+                backup_cmd = ["mariadb-dump", ]
             elif self.db_type == DBType.MYSQL:
-                dockercmd = "mysqldump"
-            dockercmd += f" -u '{self.username}' -p'{self.password}' {MYSQL_MARIADB_ARGUMENTS}"
+                backup_cmd = ["mysqldump", ]
+            backup_cmd.extend(["-u", self.username, f"-p{self.password}", *MYSQL_MARIADB_ARGUMENTS])
         elif self.db_type == DBType.POSTGRES:
-            dockercmd = f"pg_dumpall --username '{self.username}'"
+            backup_cmd = ["pg_dumpall", "--username", self.username]
         else:
             raise BackupError(f"Unkown DB type {self.db_type}")
 
-        cmd = f"docker exec {self.container.id} {dockercmd} {'| gzip --rsyncable' if compress else ''} > {out_file.as_posix()}"
-        fullcmd = ["bash", "-c", cmd]
-        try:
-            logging.debug(f"Running dump '{cmd}'")
-            subprocess.run(fullcmd, check=True, capture_output=True)
-            logging.debug("Sucessfully dumped backup")
-        except subprocess.CalledProcessError as e:
-            logging.error(f"Backup cmd returned with {e.returncode}: {e.stderr.decode().strip()}")
-            raise e
+        out_file = out_dir / f"{self.docker_compose_base}_{self.name}_{self.type()}.sql"
 
-        out_file.chmod(0o600)
-        self._check_backup(out_file)
-        logging.info(f"Done backuping container {self.name} ({self.type()})")
+        logging.info(f"Backuping container {self.name} ({self.type()})")
+        # we don't use the docker python module here, we can use stream=True XOR get return value
+        cmd = ["docker", "exec", self.container.id] + backup_cmd
+        logging.debug(f"Executing '{" ".join(cmd)}'")
+        try:
+            with out_file.open("wb") as f:
+                subprocess.run(cmd, check=True, stdout=f, stderr=subprocess.PIPE)
+            out_file.chmod(0o600)
+            logging.debug(f"Successfully created dump of container {self.name}")
+            self._check_backup(out_file)
+        except subprocess.CalledProcessError as e:
+            raise BackupError(f"Failed to create backup (return_code={e.returncode}): {e.stderr.decode().strip()}")
+
+        if compress:
+            try:
+                subprocess.run(["gzip", "--rsyncable", "--force", out_file.as_posix()], check=True, stderr=subprocess.PIPE)
+                logging.debug(f"Successfully zipped backup of container {self.name}")
+            except subprocess.CalledProcessError as e:
+                raise BackupError(f"Failed to gzip backup (return_code={e.returncode}): {e.stderr.decode().strip()}")
+        logging.info(f"Done with {self.name}. Saved backup to {out_file}{".gz" if compress else ""}")
 
     def _check_backup(self, out_file: Path) -> None:
         if not out_file.exists():
             raise BackupError(f"The backup file '{out_file}' does not exist")
+        if out_file.stat().st_size == 0:
+            raise BackupError(f"The backup file '{out_file}' is empty")
+
+        with out_file.open("r") as f:
+            backup_header = f.read(128)
 
         if self.db_type in (DBType.MYSQL, DBType.MARIADB):
-            self._grep_str(f"^-- {self.type()} dump", out_file, ["-i"])
-            self._grep_str("^-- Host: localhost", out_file)
+            if f"-- {self.type()} dump".lower() not in backup_header.lower():
+                raise BackupError(f"Could not verify backup, got:\n{backup_header.strip()}")
         elif self.db_type == DBType.POSTGRES:
-            self._grep_str("PostgreSQL database cluster dump", out_file)
+            if "-- PostgreSQL database cluster dump" not in backup_header:
+                raise BackupError(f"Could not verify backup, got:\n{backup_header.strip()}")
         logging.debug("Created backup looks good")
-
-    def _grep_str(self, string: str, file: Path, flags: list[str] = []):
-        command = "zgrep" if file.suffix == ".gz" else "grep"
-        cmd = [command, "-q"]
-        cmd.extend(flags)
-        cmd.extend(["--", string, str(file)])
-
-        try:
-            logging.debug(f"Checking backup with '{cmd}'")
-            subprocess.run(cmd, check=True)
-        except subprocess.CalledProcessError:
-            raise BackupError(f"Could not create dump for container {self.name}:\n{file}")
