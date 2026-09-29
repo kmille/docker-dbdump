@@ -82,6 +82,19 @@ options:
 
 **Note**: If you use `--ignore-container` option multiple times, please use the format `-i container1 container2`.
 
+
+
+## Overriding username/password with labels
+
+Since 0.4.0 you can override username/password manually with Docker labels:
+
+```yaml
+zammad-postgresql:
+  labels:
+    docker-dbdump.username: db-user-of-obscure-db-setup
+    docker-dbdump.password: secret-password
+```
+
 ## Example output
 
 ```bash
