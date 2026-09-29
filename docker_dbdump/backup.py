@@ -107,6 +107,7 @@ class DBContainer:
                 raise BackupError(f"Could not find username/password in env for container {self.name}:\n{env}")
 
     def backup(self, out_dir: Path, compress: bool) -> None:
+        logging.info(f"Backuping container {self.name} ({self.type()})")
         self._parse_envs()
         if self.db_type in (DBType.MARIADB, DBType.MYSQL):
             if self.db_type == DBType.MARIADB:
@@ -119,9 +120,8 @@ class DBContainer:
         else:
             raise BackupError(f"Unkown DB type {self.db_type}")
 
-        out_file = out_dir / f"{self.docker_compose_base}_{self.name}_{self.type()}.sql"
+        out_file = out_dir / f"{self.docker_compose_base}_{self.name}_{self.username}_{self.type()}.sql"
 
-        logging.info(f"Backuping container {self.name} ({self.type()})")
         # we don't use the docker python module here, we can use stream=True XOR get return value
         cmd = ["docker", "exec", self.container.id] + backup_cmd
         logging.debug(f"Executing '{" ".join(cmd)}'")
